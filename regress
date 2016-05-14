@@ -1,0 +1,122 @@
+#!/bin/bash
+#
+#Compares the current output of a program to previous output
+#
+#Usage: regress program [ -o options ] [ prefix-file ] [ -p prefix-list ]
+#
+#Examples:
+#  $ regress a.out -o ’-d 23 -t -w’ -p small medium large
+#  $ regress a.out -p small medium large
+#  $ regress a.out prefixes
+#
+#Limitations:
+#  * does not handle file names with special characters
+#
+#
+#Usage prints the error message
+usage() {
+        echo "Usage: ${0} program [ -o ’options’ ] [ prefix-file ] [ -p prefix-list ]" >&2
+        exit 1 # terminate script with non-zero exit code }
+}
+
+#check if there exists corresponding *.args file and check if two files are the same
+checksame() {
+	for arg in $(cat ${3}) ; do
+
+
+if [ ! -r ${arg}.in ] ; then
+echo "cannot access input file ${arg}.in" >&2
+continue
+fi
+
+if [ ! -r ${arg}.out ] ; then
+echo "cannot access output file ${arg}.out" >&2
+continue
+fi
+
+	cat "${arg}.args" >& /dev/null
+	if [ "${?}" -eq 0 ] ; then
+		#check if there is .args for prefix
+        	TEMPOUT=$(mktemp tmp.XXXXX)
+		${1} $(cat ${arg}.args) < "${arg}.in" > ${TEMPOUT}
+		diff ${TEMPOUT} "${arg}.out"
+		if [ $? -eq 0 ] ; then
+			echo "identical output for prefix \"${arg}\""
+		rm ${TEMPOUT}
+		else
+		rm ${TEMPOUT}
+		fi
+	else
+        	TEMPOUT=$(mktemp tmp.XXXXX)
+		${1} ${2} <"${arg}.in" > ${TEMPOUT}
+		diff ${TEMPOUT} "${arg}.out"
+		if [ $? -eq 0 ] ; then
+			echo "identical output for prefix \"${arg}\""
+rm ${TEMPOUT}
+		else		
+rm ${TEMPOUT}
+		fi
+	fi
+done
+}
+
+#append prefix-file and prefix-list
+appendfile() {
+cat < ${1} >> ${2}
+		for arg in "${@:3}" ; do
+			echo "${arg}" >> ${2}
+		done
+}
+
+
+command -v ${1} > /dev/null
+if [ ${?} -eq 1 ]; then
+echo "program ${1} cannot be run" >&2
+exit 1
+
+elif [ ${#} -eq 2 ] && [ ${2} = "-o" ] ; then
+        usage
+
+elif [ ${#} -lt 2 ]; then
+usage
+
+elif [[ ${2} = "-o" ]] ; then 
+#condition: yes -o
+	if [[ ${4} = "-p" ]] ; then
+#condition: yes -o no prefix-file
+		TEMPAPPEND=$(mktemp tmp.XXXXX)
+		appendfile ${TEMPAPPEND} ${TEMPAPPEND} "${@:5}"
+		checksame "${1}" "${3}" ${TEMPAPPEND}
+		rm ${TEMPAPPEND}
+		exit 0
+	elif [[ ${5} = "-p" ]]; then
+		#statements: yes -o, yes prefix-file, yes -p
+		TEMPAPPEND=$(mktemp tmp.XXXXX)
+		appendfile ${4} ${TEMPAPPEND} "${@:6}"
+		checksame "${1}" "${3}" ${TEMPAPPEND}
+		rm ${TEMPAPPEND}
+		exit 0
+	else
+		#statements: yes -o, yes prefix-file, no -p
+		checksame "${1}" "${3}" "${4}"
+		exit 0
+	fi
+elif [[ ${2} = "-p" ]] ; then
+		#condition: no -o and no prefix-file 
+		TEMPAPPEND=$(mktemp tmp.XXXXX)
+		appendfile ${TEMPAPPEND} ${TEMPAPPEND} "${@:3}"
+		checksame "${1}" "" ${TEMPAPPEND}
+		rm ${TEMPAPPEND}
+		exit 0
+elif [[ ${3} = "-p" ]] ; then
+	#statement: no -o, yes prefix, yes -p
+		TEMPAPPEND=$(mktemp tmp.XXXXX)
+		appendfile "${2}" ${TEMPAPPEND} "${@:4}"
+		checksame "${1}" "" ${TEMPAPPEND}
+		rm ${TEMPAPPEND}
+		exit 0
+else
+		#condition: no -o, no -p 
+		checksame "${1}" "" "${2}"
+		exit 0
+fi
